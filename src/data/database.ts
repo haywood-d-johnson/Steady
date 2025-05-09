@@ -1,7 +1,5 @@
 import * as SQLite from "expo-sqlite";
 
-import { seedDB } from "./seed";
-
 export const initDB = async () => {
     const db = await SQLite.openDatabaseAsync("steady.db");
 
@@ -19,7 +17,7 @@ export const initDB = async () => {
         CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entry_id INTEGER NOT NULL,
-        text TEXT NOT NULL,
+        note TEXT NOT NULL,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (entry_id) REFERENCES mood_entries(id) ON DELETE CASCADE
         );
@@ -36,7 +34,7 @@ export const addMoodEntryWithNotes = async (score: number, notes: string[]) => {
     );
 
     const insertNoteStmt = await db.prepareAsync(
-        "INSERT INTO notes (entry_id, text) VALUES (?, ?)"
+        "INSERT INTO notes (entry_id, note) VALUES (?, ?)"
     );
 
     try {
@@ -56,15 +54,15 @@ export const addMoodEntryWithNotes = async (score: number, notes: string[]) => {
 };
 
 export const getAllEntriesWithNotes = async () => {
-    const db = await SQLite.openDatabaseAsync("steady.db");
+const db = await SQLite.openDatabaseAsync("steady.db");
 
     const results = await db.getAllAsync<{
         id: number;
         score: number;
         created_at: string;
-        text: string | null;
+        note: string | "";
     }>(
-        `SELECT e.id, e.score, e.created_at, n.text
+        `SELECT e.id, e.score, e.created_at, n.note
         FROM mood_entries e
         LEFT JOIN notes n ON e.id = n.entry_id
         ORDER BY e.created_at DESC;`
@@ -72,6 +70,27 @@ export const getAllEntriesWithNotes = async () => {
 
     return results;
 };
+
+export const getEntryById = async (id: number) => {
+    const db = await SQLite.openDatabaseAsync("steady.db");
+
+    const results = await db.getAllAsync<{
+        id: number;
+        score: number;
+        created_at: string;
+        note: string | "";
+    }>(
+        `SELECT e.id, e.score, e.created_at, n.note
+         FROM mood_entries e
+         LEFT JOIN notes n ON e.id = n.entry_id
+         WHERE e.id = ?
+         ORDER BY e.created_at DESC;`,
+        id
+    );
+
+    return results;
+};
+
 
 export const resetTables = async () => {
   const db = await SQLite.openDatabaseAsync("steady.db");

@@ -7,7 +7,7 @@ export const seedDB = async () => {
         "INSERT INTO mood_entries (score, created_at) VALUES (?, ?) RETURNING id"
     );
     const noteStmt = await db.prepareAsync(
-        "INSERT INTO notes (entry_id, text) VALUES (?, ?)"
+        "INSERT INTO notes (entry_id, note) VALUES (?, ?)"
     );
 
     const moods = [
@@ -35,6 +35,11 @@ export const seedDB = async () => {
             score: 2,
             date: "2025-05-07 21:00:00",
             notes: [""],
+        },
+        {
+            score: 3,
+            date: "2025-05-08 21:00:00",
+            notes: ["A little better than yesterday, but still noticibly low", "Got going strong with this app. A lot of small victories here!"],
         },
     ];
 
