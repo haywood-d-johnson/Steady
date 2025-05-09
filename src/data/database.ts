@@ -72,3 +72,14 @@ export const getAllEntriesWithNotes = async () => {
 
     return results;
 };
+
+export const resetTables = async () => {
+  const db = await SQLite.openDatabaseAsync("steady.db");
+
+  await db.withTransactionAsync(async () => {
+    await db.execAsync(`DROP TABLE IF EXISTS notes;`);
+    await db.execAsync(`DROP TABLE IF EXISTS mood_entries;`);
+  });
+
+  console.log("Tables dropped.");
+};
