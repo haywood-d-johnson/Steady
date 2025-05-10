@@ -6,11 +6,11 @@ WORKDIR /app
 # Install Expo CLI globally (for cache clearing and CLI commands)
 RUN npm install -g expo-cli
 
-# Install project dependencies
-RUN npm install
-
 # Copy dependencies
 COPY package.json package-lock.json ./
+
+# Install project dependencies
+RUN npm install
 
 # Copy the rest of the app
 COPY . .
