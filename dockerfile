@@ -1,22 +1,13 @@
-FROM node:18-bullseye
+FROM node:18
 
-# Set working directory
 WORKDIR /app
 
-# Install Expo CLI globally (for cache clearing and CLI commands)
-RUN npm install -g expo-cli
+COPY package.json yarn.lock* package-lock.json* ./
 
-# Copy dependencies
-COPY package.json package-lock.json ./
+RUN if [ -f yarn.lock ]; then yarn install; else npm install; fi
 
-# Install project dependencies
-RUN npm install
-
-# Copy the rest of the app
 COPY . .
 
-# Expose Expo ports (adjust if needed)
-EXPOSE 8081 19000 19001 19002
+ENV EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
 
-# Start Expo with clear cache
 CMD ["npx", "expo", "start", "-c"]

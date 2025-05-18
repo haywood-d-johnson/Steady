@@ -39,7 +39,10 @@ export const seedDB = async () => {
         {
             score: 3,
             date: "2025-05-08 21:00:00",
-            notes: ["A little better than yesterday, but still noticibly low", "Got going strong with this app. A lot of small victories here!"],
+            notes: [
+                "A little better than yesterday, but still noticibly low",
+                "Got going strong with this app. A lot of small victories here!",
+            ],
         },
     ];
 
