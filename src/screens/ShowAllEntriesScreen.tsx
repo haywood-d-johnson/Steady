@@ -9,11 +9,14 @@ import {
     Alert,
     Platform,
     TouchableOpacity,
+    Share,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useDB } from "../data/DBContext";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types/navigation";
+import type { ExportedData } from "../data/SteadyDBClass";
+import * as Clipboard from "expo-clipboard";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ShowAllEntries">;
 
@@ -120,6 +123,105 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
         }
     };
 
+    const handleExport = async () => {
+        try {
+            const exportData = await db.exportData();
+            const jsonString = JSON.stringify(exportData, null, 2);
+            await Clipboard.setStringAsync(jsonString);
+            Alert.alert(
+                "Success",
+                "Data has been copied to your clipboard. Save it somewhere safe!"
+            );
+        } catch (error) {
+            console.error("Export failed:", error);
+            Alert.alert(
+                "Export Failed",
+                "Could not copy data to clipboard. Please try again."
+            );
+        }
+    };
+
+    const handleImport = async () => {
+        try {
+            const clipboardText = await Clipboard.getStringAsync();
+            if (!clipboardText) {
+                Alert.alert(
+                    "No Data",
+                    "No data found in clipboard. Please copy your backup data first."
+                );
+                return;
+            }
+
+            try {
+                const jsonData = JSON.parse(clipboardText);
+
+                // Validate the data format
+                if (
+                    !jsonData.version ||
+                    !jsonData.entries ||
+                    !Array.isArray(jsonData.entries)
+                ) {
+                    Alert.alert(
+                        "Invalid Format",
+                        "The clipboard data is not in the correct format. Please make sure you copied the entire backup data."
+                    );
+                    return;
+                }
+
+                // Confirm import
+                Alert.alert(
+                    "Confirm Import",
+                    `This will import ${jsonData.entries.length} entries and replace your current data. Continue?`,
+                    [
+                        {
+                            text: "Cancel",
+                            style: "cancel",
+                        },
+                        {
+                            text: "Import",
+                            onPress: async () => {
+                                try {
+                                    await importData(jsonData);
+                                } catch (error) {
+                                    console.error("Import failed:", error);
+                                    Alert.alert(
+                                        "Import Failed",
+                                        "Could not import the data. Please check the format and try again."
+                                    );
+                                }
+                            },
+                        },
+                    ]
+                );
+            } catch (error) {
+                Alert.alert(
+                    "Invalid Data",
+                    "The clipboard contains invalid JSON data. Please make sure you copied the entire backup data."
+                );
+            }
+        } catch (error) {
+            console.error("Clipboard read failed:", error);
+            Alert.alert(
+                "Error",
+                "Could not read from clipboard. Please try again."
+            );
+        }
+    };
+
+    const importData = async (data: ExportedData) => {
+        try {
+            await db.importData(data);
+            await loadEntries(); // Refresh the list
+            Alert.alert("Success", "Data imported successfully!");
+        } catch (error) {
+            console.error("Import failed:", error);
+            Alert.alert(
+                "Import Failed",
+                "Failed to import data. Please try again."
+            );
+        }
+    };
+
     useEffect(() => {
         const init = async () => {
             setLoading(true);
@@ -187,11 +289,30 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
             />
 
             <View style={styles.footer}>
-                <Button
-                    title="Reset Database"
+                <View style={styles.buttonGroup}>
+                    <TouchableOpacity
+                        style={[styles.button, styles.exportButton]}
+                        onPress={handleExport}
+                    >
+                        <Text style={styles.buttonText}>Copy to Clipboard</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.button, styles.importButton]}
+                        onPress={handleImport}
+                    >
+                        <Text style={styles.buttonText}>
+                            Import from Clipboard
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                    style={[styles.button, styles.resetButton]}
                     onPress={handleReset}
-                    color="#ff6b6b"
-                />
+                >
+                    <Text style={[styles.buttonText, styles.resetButtonText]}>
+                        Reset Database
+                    </Text>
+                </TouchableOpacity>
             </View>
             <StatusBar style="auto" />
         </View>
@@ -290,5 +411,37 @@ const styles = StyleSheet.create({
         padding: 16,
         borderTopWidth: 1,
         borderTopColor: "#e0e0e0",
+        backgroundColor: "#fff",
+    },
+    buttonGroup: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 12,
+    },
+    button: {
+        padding: 12,
+        borderRadius: 8,
+        flex: 1,
+        marginHorizontal: 4,
+        alignItems: "center",
+    },
+    buttonText: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#fff",
+    },
+    exportButton: {
+        backgroundColor: "#4CAF50",
+    },
+    importButton: {
+        backgroundColor: "#2196F3",
+    },
+    resetButton: {
+        backgroundColor: "#fff",
+        borderWidth: 1,
+        borderColor: "#ff6b6b",
+    },
+    resetButtonText: {
+        color: "#ff6b6b",
     },
 });

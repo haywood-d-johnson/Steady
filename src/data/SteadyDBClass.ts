@@ -166,6 +166,16 @@ class WebStorage {
     }
 }
 
+export interface ExportedData {
+    version: string;
+    timestamp: string;
+    entries: {
+        score: number;
+        created_at: string;
+        notes: string[];
+    }[];
+}
+
 export class SteadyDB {
     private nativeDB: SQLite.WebSQLDatabase | null = null;
     private webDB: WebStorage | null = null;
@@ -466,5 +476,61 @@ export class SteadyDB {
                 }
             );
         });
+    }
+
+    async exportData(): Promise<ExportedData> {
+        const entries = await this.getAllEntriesWithNotes();
+        console.log("entries", entries);
+        console.log("Button Pressed!");
+
+        // Group notes by entry_id
+        const entriesWithNotes = entries.reduce((acc, entry) => {
+            const existingEntry = acc.find(e => e.id === entry.id);
+            if (existingEntry) {
+                if (entry.note) {
+                    existingEntry.notes.push(entry.note);
+                }
+            } else {
+                acc.push({
+                    id: entry.id,
+                    score: entry.score,
+                    created_at: entry.created_at,
+                    notes: entry.note ? [entry.note] : [],
+                });
+            }
+            return acc;
+        }, [] as Array<{ id: number; score: number; created_at: string; notes: string[] }>);
+
+        // Format for export
+        const exportData: ExportedData = {
+            version: "1.0",
+            timestamp: new Date().toISOString(),
+            entries: entriesWithNotes.map(({ score, created_at, notes }) => ({
+                score,
+                created_at,
+                notes,
+            })),
+        };
+
+        return exportData;
+    }
+
+    async importData(data: ExportedData): Promise<void> {
+        if (!data.version || !data.entries || !Array.isArray(data.entries)) {
+            throw new Error("Invalid import data format");
+        }
+
+        // Reset the database first
+        await this.resetTables();
+        await this.initDB();
+
+        // Import all entries
+        for (const entry of data.entries) {
+            await this.addMoodEntryWithNotes(
+                entry.score,
+                entry.notes,
+                new Date(entry.created_at)
+            );
+        }
     }
 }

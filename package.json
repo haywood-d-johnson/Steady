@@ -17,6 +17,7 @@
     "@react-navigation/native": "6.1.9",
     "@react-navigation/native-stack": "6.9.17",
     "expo": "47.0.14",
+    "expo-clipboard": "4.0.2",
     "expo-dev-client": "2.0.1",
     "expo-file-system": "15.1.1",
     "expo-notifications": "0.17.0",
