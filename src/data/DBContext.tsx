@@ -5,10 +5,15 @@ import React, {
     useState,
     ReactNode,
 } from "react";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator, StyleSheet, Text } from "react-native";
 import { SteadyDB } from "./SteadyDBClass";
 
-const DBContext = createContext<SteadyDB | null>(null);
+interface DBContextType {
+    db: SteadyDB;
+    error: Error | null;
+}
+
+const DBContext = createContext<DBContextType | null>(null);
 
 export const useDB = () => {
     const context = useContext(DBContext);
@@ -18,16 +23,35 @@ export const useDB = () => {
 
 export const DBProvider = ({ children }: { children: ReactNode }) => {
     const [db, setDb] = useState<SteadyDB | null>(null);
+    const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
         const initializeDB = async () => {
-            const instance = new SteadyDB();
-            await instance.initDB();
-            setDb(instance);
+            try {
+                const instance = new SteadyDB();
+                await instance.initDB();
+                setDb(instance);
+            } catch (err) {
+                setError(
+                    err instanceof Error
+                        ? err
+                        : new Error("Failed to initialize database")
+                );
+            }
         };
 
         initializeDB();
     }, []);
+
+    if (error) {
+        return (
+            <View style={styles.loadingContainer}>
+                <Text style={styles.errorText}>
+                    Database Error: {error.message}
+                </Text>
+            </View>
+        );
+    }
 
     if (!db) {
         return (
@@ -37,7 +61,11 @@ export const DBProvider = ({ children }: { children: ReactNode }) => {
         );
     }
 
-    return <DBContext.Provider value={db}>{children}</DBContext.Provider>;
+    return (
+        <DBContext.Provider value={{ db, error }}>
+            {children}
+        </DBContext.Provider>
+    );
 };
 
 const styles = StyleSheet.create({
@@ -46,5 +74,10 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
         backgroundColor: "#fff",
+    },
+    errorText: {
+        color: "red",
+        textAlign: "center",
+        padding: 20,
     },
 });

@@ -1,40 +1,48 @@
 {
-  "expo": {
-    "name": "steady",
-    "slug": "steady",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.lordorbnauticus.steady"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "build": {
-        "babel": {
-          "include": [
-            "wa-sqlite"
-          ]
+    "expo": {
+        "name": "steady",
+        "slug": "steady",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/icon.png",
+        "userInterfaceStyle": "light",
+        "newArchEnabled": true,
+        "splash": {
+            "image": "./assets/splash-icon.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#ffffff"
+        },
+        "ios": {
+            "supportsTablet": true,
+            "bundleIdentifier": "com.lordorbnauticus.steady"
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/adaptive-icon.png",
+                "backgroundColor": "#ffffff"
+            },
+            "edgeToEdgeEnabled": true,
+            "package": "com.lordorbnauticus.steady"
+        },
+        "web": {
+            "favicon": "./assets/favicon.png",
+            "bundler": "metro",
+            "build": {
+                "babel": {
+                    "include": [
+                        "wa-sqlite",
+                        "@expo/metro-runtime",
+                        "react-native-url-polyfill",
+                        "web-streams-polyfill"
+                    ]
+                }
+            }
+        },
+        "plugins": ["expo-file-system"],
+        "extra": {
+            "eas": {
+                "projectId": "steady"
+            }
         }
-      }
-    },
-    "plugins": [
-      "expo-sqlite"
-    ]
-  }
+    }
 }

@@ -7,14 +7,14 @@ import { useDB } from "../data/DBContext";
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
 export default function HomeScreen({ navigation }: Props) {
-    const db = useDB();
+    const { db } = useDB();
 
     React.useEffect(() => {
         (async () => {
             const entries = await db.getAllEntriesWithNotes();
             console.log("Entries from DB: ", entries);
         })();
-    }, []);
+    }, [db]);
 
     return (
         <View>
