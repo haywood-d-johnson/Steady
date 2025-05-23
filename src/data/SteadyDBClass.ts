@@ -1,5 +1,6 @@
 import * as SQLite from "expo-sqlite";
 import { Platform } from "react-native";
+import * as FileSystem from "expo-file-system";
 
 interface MoodEntry {
     id: number;
@@ -75,7 +76,11 @@ class WebStorage {
         });
     }
 
-    async addMoodEntryWithNotes(score: number, notes: string[]): Promise<void> {
+    async addMoodEntryWithNotes(
+        score: number,
+        notes: string[],
+        created_at?: Date
+    ): Promise<void> {
         const db = this.db;
         if (!db) throw new Error("Database not initialized");
         return new Promise((resolve, reject) => {
@@ -88,7 +93,8 @@ class WebStorage {
 
             const entry = {
                 score,
-                created_at: new Date().toISOString(),
+                created_at:
+                    created_at?.toISOString() || new Date().toISOString(),
             };
 
             const moodRequest = moodStore.add(entry);
@@ -166,48 +172,123 @@ export class SteadyDB {
     private dbName = "steady.db";
 
     constructor() {
-        if (Platform.OS === "web") {
+        console.log("Initializing SteadyDB...");
+        console.log("Platform:", Platform.OS);
+        console.log("Running in Expo:", "__DEV__" in global);
+
+        // Use WebStorage only if we're in a real web browser
+        if (
+            Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.indexedDB
+        ) {
+            console.log("Using WebStorage");
             this.webDB = new WebStorage();
         } else {
-            this.nativeDB = SQLite.openDatabase(this.dbName);
+            console.log("Using SQLite database");
+            try {
+                this.nativeDB = SQLite.openDatabase(this.dbName);
+                console.log("Database opened successfully");
+            } catch (error) {
+                console.error("Error opening database:", error);
+                throw error;
+            }
         }
     }
 
     async initDB(): Promise<void> {
-        if (Platform.OS === "web") {
+        // Use WebStorage only if we're in a real web browser
+        if (
+            Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.indexedDB
+        ) {
             if (!this.webDB) throw new Error("Web database not initialized");
             return this.webDB.init();
         }
 
         if (!this.nativeDB) throw new Error("Native database not initialized");
+
+        // Check if we have permission to write to the filesystem
+        const dbDirectory = `${FileSystem.documentDirectory}SQLite`;
+        console.log("Database directory:", dbDirectory);
+
+        const dirInfo = await FileSystem.getInfoAsync(dbDirectory);
+        if (!dirInfo.exists) {
+            console.log("Creating SQLite directory...");
+            await FileSystem.makeDirectoryAsync(dbDirectory, {
+                intermediates: true,
+            });
+        }
+
         return new Promise((resolve, reject) => {
+            console.log("Initializing database tables...");
             this.nativeDB!.transaction(
                 tx => {
-                    tx.executeSql("PRAGMA journal_mode = WAL;");
+                    console.log("Beginning transaction...");
+                    tx.executeSql(
+                        "PRAGMA journal_mode = WAL;",
+                        [],
+                        () => console.log("Set journal mode"),
+                        (_, error) => {
+                            console.error("Error setting journal mode:", error);
+                            return false;
+                        }
+                    );
+
                     tx.executeSql(
                         `CREATE TABLE IF NOT EXISTS mood_entries (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             score INTEGER,
                             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                        );`
+                        );`,
+                        [],
+                        () => console.log("Created mood_entries table"),
+                        (_, error) => {
+                            console.error(
+                                "Error creating mood_entries table:",
+                                error
+                            );
+                            return false;
+                        }
                     );
+
                     tx.executeSql(
                         `CREATE TABLE IF NOT EXISTS notes (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             entry_id INTEGER,
                             note TEXT,
                             FOREIGN KEY (entry_id) REFERENCES mood_entries(id)
-                        );`
+                        );`,
+                        [],
+                        () => console.log("Created notes table"),
+                        (_, error) => {
+                            console.error("Error creating notes table:", error);
+                            return false;
+                        }
                     );
                 },
-                error => reject(error),
-                () => resolve()
+                error => {
+                    console.error("Transaction error:", error);
+                    reject(error);
+                },
+                () => {
+                    console.log(
+                        "Database initialization completed successfully"
+                    );
+                    resolve();
+                }
             );
         });
     }
 
     async getAllEntriesWithNotes(): Promise<MoodEntry[]> {
-        if (Platform.OS === "web") {
+        // Use WebStorage only if we're in a real web browser
+        if (
+            Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.indexedDB
+        ) {
             if (!this.webDB) throw new Error("Web database not initialized");
             return this.webDB.getAllEntriesWithNotes();
         }
@@ -221,8 +302,12 @@ export class SteadyDB {
                     LEFT JOIN notes n ON e.id = n.entry_id
                     ORDER BY e.created_at DESC;`,
                     [],
-                    (_, { rows: { _array } }) => resolve(_array),
+                    (_, { rows: { _array } }) => {
+                        console.log("Retrieved entries:", _array);
+                        resolve(_array);
+                    },
                     (_, error) => {
+                        console.error("Error getting entries:", error);
                         reject(error);
                         return false;
                     }
@@ -231,10 +316,19 @@ export class SteadyDB {
         });
     }
 
-    async addMoodEntryWithNotes(score: number, notes: string[]): Promise<void> {
-        if (Platform.OS === "web") {
+    async addMoodEntryWithNotes(
+        score: number,
+        notes: string[],
+        created_at?: Date
+    ): Promise<void> {
+        // Use WebStorage only if we're in a real web browser
+        if (
+            Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.indexedDB
+        ) {
             if (!this.webDB) throw new Error("Web database not initialized");
-            return this.webDB.addMoodEntryWithNotes(score, notes);
+            return this.webDB.addMoodEntryWithNotes(score, notes, created_at);
         }
 
         if (!this.nativeDB) throw new Error("Native database not initialized");
@@ -242,22 +336,55 @@ export class SteadyDB {
             this.nativeDB!.transaction(
                 tx => {
                     tx.executeSql(
-                        "INSERT INTO mood_entries (score) VALUES (?)",
-                        [score],
+                        "INSERT INTO mood_entries (score, created_at) VALUES (?, ?)",
+                        [
+                            score,
+                            created_at?.toISOString() ||
+                                new Date().toISOString(),
+                        ],
                         (_, { insertId }) => {
+                            console.log(
+                                "Inserted mood entry with ID:",
+                                insertId
+                            );
                             if (insertId != null) {
                                 notes.forEach(note => {
-                                    tx.executeSql(
-                                        "INSERT INTO notes (entry_id, note) VALUES (?, ?)",
-                                        [insertId, note]
-                                    );
+                                    if (note.trim()) {
+                                        // Only insert non-empty notes
+                                        tx.executeSql(
+                                            "INSERT INTO notes (entry_id, note) VALUES (?, ?)",
+                                            [insertId, note],
+                                            () =>
+                                                console.log(
+                                                    "Inserted note for entry:",
+                                                    insertId
+                                                ),
+                                            (_, error) => {
+                                                console.error(
+                                                    "Error inserting note:",
+                                                    error
+                                                );
+                                                return false;
+                                            }
+                                        );
+                                    }
                                 });
                             }
+                        },
+                        (_, error) => {
+                            console.error("Error inserting mood entry:", error);
+                            return false;
                         }
                     );
                 },
-                error => reject(error),
-                () => resolve()
+                error => {
+                    console.error("Transaction error:", error);
+                    reject(error);
+                },
+                () => {
+                    console.log("Successfully added mood entry with notes");
+                    resolve();
+                }
             );
         });
     }
@@ -289,21 +416,52 @@ export class SteadyDB {
     }
 
     async resetTables(): Promise<void> {
-        if (Platform.OS === "web") {
+        if (
+            Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.indexedDB
+        ) {
             if (!this.webDB) throw new Error("Web database not initialized");
             return this.webDB.resetTables();
         }
 
         if (!this.nativeDB) throw new Error("Native database not initialized");
         return new Promise((resolve, reject) => {
+            console.log("Starting table reset...");
             this.nativeDB!.transaction(
                 tx => {
-                    tx.executeSql("DROP TABLE IF EXISTS notes;");
-                    tx.executeSql("DROP TABLE IF EXISTS mood_entries;");
+                    // Drop tables in correct order (notes depends on mood_entries)
+                    console.log("Dropping notes table...");
+                    tx.executeSql(
+                        "DROP TABLE IF EXISTS notes;",
+                        [],
+                        () => console.log("Notes table dropped"),
+                        (_, error) => {
+                            console.error("Error dropping notes table:", error);
+                            return false;
+                        }
+                    );
+
+                    console.log("Dropping mood_entries table...");
+                    tx.executeSql(
+                        "DROP TABLE IF EXISTS mood_entries;",
+                        [],
+                        () => console.log("Mood entries table dropped"),
+                        (_, error) => {
+                            console.error(
+                                "Error dropping mood_entries table:",
+                                error
+                            );
+                            return false;
+                        }
+                    );
                 },
-                error => reject(error),
+                error => {
+                    console.error("Transaction error during reset:", error);
+                    reject(error);
+                },
                 () => {
-                    console.log("Tables dropped.");
+                    console.log("All tables dropped successfully");
                     resolve();
                 }
             );

@@ -1,83 +1,44 @@
-import React, {
-    createContext,
-    useContext,
-    useEffect,
-    useState,
-    ReactNode,
-} from "react";
-import { View, ActivityIndicator, StyleSheet, Text } from "react-native";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { SteadyDB } from "./SteadyDBClass";
 
 interface DBContextType {
     db: SteadyDB;
-    error: Error | null;
 }
 
-const DBContext = createContext<DBContextType | null>(null);
+const DBContext = createContext<DBContextType | undefined>(undefined);
 
-export const useDB = () => {
-    const context = useContext(DBContext);
-    if (!context) throw new Error("useDB must be used inside a DBProvider");
-    return context;
-};
-
-export const DBProvider = ({ children }: { children: ReactNode }) => {
-    const [db, setDb] = useState<SteadyDB | null>(null);
-    const [error, setError] = useState<Error | null>(null);
+export function DBProvider({ children }: { children: React.ReactNode }) {
+    const [instance] = useState(() => new SteadyDB());
+    const [isInitialized, setIsInitialized] = useState(false);
 
     useEffect(() => {
-        const initializeDB = async () => {
+        const initDB = async () => {
             try {
-                const instance = new SteadyDB();
                 await instance.initDB();
-                setDb(instance);
-            } catch (err) {
-                setError(
-                    err instanceof Error
-                        ? err
-                        : new Error("Failed to initialize database")
-                );
+                setIsInitialized(true);
+            } catch (error) {
+                console.error("Error initializing database:", error);
             }
         };
 
-        initializeDB();
-    }, []);
+        initDB();
+    }, [instance]);
 
-    if (error) {
-        return (
-            <View style={styles.loadingContainer}>
-                <Text style={styles.errorText}>
-                    Database Error: {error.message}
-                </Text>
-            </View>
-        );
-    }
-
-    if (!db) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#555" />
-            </View>
-        );
+    if (!isInitialized) {
+        return null; // Or a loading spinner
     }
 
     return (
-        <DBContext.Provider value={{ db, error }}>
+        <DBContext.Provider value={{ db: instance }}>
             {children}
         </DBContext.Provider>
     );
-};
+}
 
-const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#fff",
-    },
-    errorText: {
-        color: "red",
-        textAlign: "center",
-        padding: 20,
-    },
-});
+export function useDB() {
+    const context = useContext(DBContext);
+    if (context === undefined) {
+        throw new Error("useDB must be used within a DBProvider");
+    }
+    return context;
+}
