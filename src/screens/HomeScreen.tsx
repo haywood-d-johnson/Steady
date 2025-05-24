@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
     View,
     Text,
@@ -8,12 +8,13 @@ import {
     PanResponder,
     Animated,
     Dimensions,
+    TouchableOpacity,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types/navigation";
 import { useDB } from "../data/DBContext";
 import { StatusBar } from "expo-status-bar";
-import { TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
@@ -163,6 +164,19 @@ export default function HomeScreen({ navigation }: Props) {
     const [selectedScore, setSelectedScore] = useState<number>(5);
     const [note, setNote] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={() => navigation.navigate("Settings")}
+                    style={{ marginRight: 16 }}
+                >
+                    <Ionicons name="settings-outline" size={24} color="#333" />
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation]);
 
     const handleSubmit = async () => {
         try {
