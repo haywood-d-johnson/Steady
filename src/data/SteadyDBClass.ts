@@ -14,16 +14,22 @@ class WebStorage {
     private db: IDBDatabase | null = null;
 
     async init(): Promise<void> {
+        console.log("Initializing WebStorage...");
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.dbName, 1);
 
-            request.onerror = () => reject(request.error);
+            request.onerror = () => {
+                console.error("WebStorage init error:", request.error);
+                reject(request.error);
+            };
             request.onsuccess = () => {
+                console.log("WebStorage initialized successfully");
                 this.db = request.result;
                 resolve();
             };
 
             request.onupgradeneeded = event => {
+                console.log("WebStorage upgrade needed, creating stores...");
                 const db = (event.target as IDBOpenDBRequest).result;
                 if (!db.objectStoreNames.contains("mood_entries")) {
                     const moodStore = db.createObjectStore("mood_entries", {
@@ -31,6 +37,7 @@ class WebStorage {
                         autoIncrement: true,
                     });
                     moodStore.createIndex("created_at", "created_at");
+                    console.log("Created mood_entries store");
                 }
                 if (!db.objectStoreNames.contains("notes")) {
                     const notesStore = db.createObjectStore("notes", {
@@ -38,6 +45,7 @@ class WebStorage {
                         autoIncrement: true,
                     });
                     notesStore.createIndex("entry_id", "entry_id");
+                    console.log("Created notes store");
                 }
             };
         });
@@ -81,6 +89,7 @@ class WebStorage {
         notes: string[],
         created_at?: Date
     ): Promise<void> {
+        console.log("Adding mood entry:", { score, notes, created_at });
         const db = this.db;
         if (!db) throw new Error("Database not initialized");
         return new Promise((resolve, reject) => {
@@ -100,13 +109,21 @@ class WebStorage {
             const moodRequest = moodStore.add(entry);
             moodRequest.onsuccess = () => {
                 const entryId = moodRequest.result;
+                console.log("Added mood entry with ID:", entryId);
                 notes.forEach(note => {
                     notesStore.add({ entry_id: entryId, note });
+                    console.log("Added note for entry:", entryId);
                 });
             };
 
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
+            transaction.oncomplete = () => {
+                console.log("Transaction completed successfully");
+                resolve();
+            };
+            transaction.onerror = () => {
+                console.error("Transaction error:", transaction.error);
+                reject(transaction.error);
+            };
         });
     }
 
@@ -144,24 +161,65 @@ class WebStorage {
     }
 
     async resetTables(): Promise<void> {
+        console.log("WebStorage: Starting resetTables...");
         const db = this.db;
-        if (!db) throw new Error("Database not initialized");
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(
-                ["mood_entries", "notes"],
-                "readwrite"
+        if (!db) {
+            console.error(
+                "WebStorage: Database not initialized in resetTables"
             );
-            const moodStore = transaction.objectStore("mood_entries");
-            const notesStore = transaction.objectStore("notes");
+            throw new Error("Database not initialized");
+        }
+        return new Promise((resolve, reject) => {
+            try {
+                console.log("WebStorage: Creating transaction for reset...");
+                const transaction = db.transaction(
+                    ["mood_entries", "notes"],
+                    "readwrite"
+                );
+                const moodStore = transaction.objectStore("mood_entries");
+                const notesStore = transaction.objectStore("notes");
 
-            notesStore.clear();
-            moodStore.clear();
+                console.log("WebStorage: Clearing notes store...");
+                const clearNotesRequest = notesStore.clear();
+                clearNotesRequest.onsuccess = () => {
+                    console.log("WebStorage: Notes store cleared");
+                };
+                clearNotesRequest.onerror = () => {
+                    console.error(
+                        "WebStorage: Error clearing notes store:",
+                        clearNotesRequest.error
+                    );
+                };
 
-            transaction.oncomplete = () => {
-                console.log("Tables cleared");
-                resolve();
-            };
-            transaction.onerror = () => reject(transaction.error);
+                console.log("WebStorage: Clearing mood_entries store...");
+                const clearMoodRequest = moodStore.clear();
+                clearMoodRequest.onsuccess = () => {
+                    console.log("WebStorage: Mood entries store cleared");
+                };
+                clearMoodRequest.onerror = () => {
+                    console.error(
+                        "WebStorage: Error clearing mood entries store:",
+                        clearMoodRequest.error
+                    );
+                };
+
+                transaction.oncomplete = () => {
+                    console.log(
+                        "WebStorage: Reset transaction completed successfully"
+                    );
+                    resolve();
+                };
+                transaction.onerror = () => {
+                    console.error(
+                        "WebStorage: Reset transaction error:",
+                        transaction.error
+                    );
+                    reject(transaction.error);
+                };
+            } catch (error) {
+                console.error("WebStorage: Error in resetTables:", error);
+                reject(error);
+            }
         });
     }
 }
@@ -185,6 +243,11 @@ export class SteadyDB {
         console.log("Initializing SteadyDB...");
         console.log("Platform:", Platform.OS);
         console.log("Running in Expo:", "__DEV__" in global);
+        console.log("Window object available:", typeof window !== "undefined");
+        console.log(
+            "IndexedDB available:",
+            typeof window !== "undefined" && "indexedDB" in window
+        );
 
         // Use WebStorage only if we're in a real web browser
         if (
@@ -192,15 +255,15 @@ export class SteadyDB {
             typeof window !== "undefined" &&
             window.indexedDB
         ) {
-            console.log("Using WebStorage");
+            console.log("Using WebStorage for database operations");
             this.webDB = new WebStorage();
         } else {
-            console.log("Using SQLite database");
+            console.log("Using SQLite for database operations");
             try {
                 this.nativeDB = SQLite.openDatabase(this.dbName);
-                console.log("Database opened successfully");
+                console.log("SQLite database opened successfully");
             } catch (error) {
-                console.error("Error opening database:", error);
+                console.error("Error opening SQLite database:", error);
                 throw error;
             }
         }
@@ -426,16 +489,25 @@ export class SteadyDB {
     }
 
     async resetTables(): Promise<void> {
+        console.log("SteadyDB: Starting resetTables...");
         if (
             Platform.OS === "web" &&
             typeof window !== "undefined" &&
             window.indexedDB
         ) {
-            if (!this.webDB) throw new Error("Web database not initialized");
+            console.log("SteadyDB: Using WebStorage for reset");
+            if (!this.webDB) {
+                console.error("SteadyDB: WebDB not initialized");
+                throw new Error("Web database not initialized");
+            }
             return this.webDB.resetTables();
         }
 
-        if (!this.nativeDB) throw new Error("Native database not initialized");
+        console.log("SteadyDB: Using SQLite for reset");
+        if (!this.nativeDB) {
+            console.error("SteadyDB: NativeDB not initialized");
+            throw new Error("Native database not initialized");
+        }
         return new Promise((resolve, reject) => {
             console.log("Starting table reset...");
             this.nativeDB!.transaction(
@@ -516,21 +588,37 @@ export class SteadyDB {
     }
 
     async importData(data: ExportedData): Promise<void> {
+        console.log("Starting importData with:", data);
+
         if (!data.version || !data.entries || !Array.isArray(data.entries)) {
+            console.error("Invalid import data format:", data);
             throw new Error("Invalid import data format");
         }
 
-        // Reset the database first
-        await this.resetTables();
-        await this.initDB();
+        try {
+            // Reset the database first
+            console.log("Resetting tables...");
+            await this.resetTables();
+            console.log("Tables reset successfully");
 
-        // Import all entries
-        for (const entry of data.entries) {
-            await this.addMoodEntryWithNotes(
-                entry.score,
-                entry.notes,
-                new Date(entry.created_at)
-            );
+            console.log("Initializing database...");
+            await this.initDB();
+            console.log("Database initialized");
+
+            // Import all entries
+            console.log("Starting to import entries...");
+            for (const entry of data.entries) {
+                console.log("Importing entry:", entry);
+                await this.addMoodEntryWithNotes(
+                    entry.score,
+                    entry.notes,
+                    new Date(entry.created_at)
+                );
+            }
+            console.log("All entries imported successfully");
+        } catch (error) {
+            console.error("Error during import:", error);
+            throw error;
         }
     }
 }

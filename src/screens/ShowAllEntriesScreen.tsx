@@ -174,6 +174,24 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
         }
     };
 
+    const importData = async (data: ExportedData) => {
+        try {
+            console.log("Starting import with data:", data);
+            await db.importData(data);
+            console.log("Import completed successfully");
+            await loadEntries(); // Refresh the list
+            Alert.alert("Success", "Data imported successfully!");
+        } catch (error) {
+            console.error("Import failed in importData:", error);
+            Alert.alert(
+                "Import Failed",
+                error instanceof Error
+                    ? error.message
+                    : "Failed to import data. Please try again."
+            );
+        }
+    };
+
     const handleImport = async () => {
         try {
             let jsonData: ExportedData;
@@ -182,22 +200,48 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
                 // For web, use file input
                 const input = document.createElement("input");
                 input.type = "file";
-                input.accept = "application/json";
+                input.accept = ".json,application/json";
 
-                const file = await new Promise<File>((resolve, reject) => {
-                    input.onchange = e => {
-                        const files = (e.target as HTMLInputElement).files;
-                        if (files && files[0]) {
-                            resolve(files[0]);
-                        } else {
-                            reject(new Error("No file selected"));
-                        }
-                    };
-                    input.click();
-                });
+                const fileContent = await new Promise<string>(
+                    (resolve, reject) => {
+                        input.onchange = async e => {
+                            try {
+                                const files = (e.target as HTMLInputElement)
+                                    .files;
+                                if (!files || !files[0]) {
+                                    reject(new Error("No file selected"));
+                                    return;
+                                }
 
-                const text = await file.text();
-                jsonData = JSON.parse(text);
+                                const reader = new FileReader();
+                                reader.onload = event => {
+                                    if (event.target?.result) {
+                                        resolve(event.target.result as string);
+                                    } else {
+                                        reject(
+                                            new Error("Failed to read file")
+                                        );
+                                    }
+                                };
+                                reader.onerror = () =>
+                                    reject(new Error("Failed to read file"));
+                                reader.readAsText(files[0]);
+                            } catch (error) {
+                                reject(error);
+                            }
+                        };
+                        input.click();
+                    }
+                );
+
+                console.log("File content read:", fileContent);
+                try {
+                    jsonData = JSON.parse(fileContent);
+                    console.log("Parsed JSON data:", jsonData);
+                } catch (error) {
+                    console.error("JSON parse error:", error);
+                    throw new Error("Invalid JSON format in the selected file");
+                }
             } else {
                 // For mobile, use document picker
                 const result = await DocumentPicker.getDocumentAsync({
@@ -211,67 +255,100 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
                 const fileContent = await FileSystem.readAsStringAsync(
                     result.uri
                 );
-                jsonData = JSON.parse(fileContent);
+                try {
+                    jsonData = JSON.parse(fileContent);
+                    console.log("Parsed JSON data (mobile):", jsonData);
+                } catch (error) {
+                    console.error("JSON parse error (mobile):", error);
+                    throw new Error("Invalid JSON format in the selected file");
+                }
             }
 
             // Validate the data format
+            if (!jsonData || typeof jsonData !== "object") {
+                console.error("Invalid data format - not an object:", jsonData);
+                throw new Error("Invalid file format - not a JSON object");
+            }
+
             if (
                 !jsonData.version ||
                 !jsonData.entries ||
                 !Array.isArray(jsonData.entries)
             ) {
-                Alert.alert(
-                    "Invalid Format",
-                    "The selected file is not in the correct format. Please make sure you're using a valid Steady export file."
-                );
-                return;
+                console.error("Invalid Steady format:", jsonData);
+                throw new Error("Invalid Steady export file format");
             }
 
-            // Confirm import
-            Alert.alert(
-                "Confirm Import",
-                `This will import ${jsonData.entries.length} entries and replace your current data. Continue?`,
-                [
-                    {
-                        text: "Cancel",
-                        style: "cancel",
-                    },
-                    {
-                        text: "Import",
-                        onPress: async () => {
-                            try {
-                                await importData(jsonData);
-                            } catch (error) {
-                                console.error("Import failed:", error);
-                                Alert.alert(
-                                    "Import Failed",
-                                    "Could not import the data. Please check the format and try again."
-                                );
-                            }
-                        },
-                    },
-                ]
+            console.log(
+                "Data validation passed, proceeding to import confirmation"
             );
-        } catch (error) {
-            console.error("Import failed:", error);
-            Alert.alert(
-                "Import Failed",
-                "Could not read the selected file. Please make sure it's a valid Steady export file."
-            );
-        }
-    };
 
-    const importData = async (data: ExportedData) => {
-        try {
-            await db.importData(data);
-            await loadEntries(); // Refresh the list
-            Alert.alert("Success", "Data imported successfully!");
+            // For web, use confirm instead of Alert
+            if (Platform.OS === "web") {
+                const shouldImport = window.confirm(
+                    `This will import ${jsonData.entries.length} entries and replace your current data. Continue?`
+                );
+                if (shouldImport) {
+                    console.log("Import confirmed by user (web)");
+                    try {
+                        await importData(jsonData);
+                    } catch (error) {
+                        console.error(
+                            "Import failed after web confirmation:",
+                            error
+                        );
+                        window.alert("Import failed. Please try again.");
+                    }
+                }
+            } else {
+                // For mobile, use Alert
+                Alert.alert(
+                    "Confirm Import",
+                    `This will import ${jsonData.entries.length} entries and replace your current data. Continue?`,
+                    [
+                        {
+                            text: "Cancel",
+                            style: "cancel",
+                        },
+                        {
+                            text: "Import",
+                            onPress: async () => {
+                                console.log(
+                                    "Import confirmed by user (mobile)"
+                                );
+                                try {
+                                    await importData(jsonData);
+                                } catch (error) {
+                                    console.error(
+                                        "Import failed after mobile confirmation:",
+                                        error
+                                    );
+                                    Alert.alert(
+                                        "Import Failed",
+                                        "Could not import the data. Please check the format and try again."
+                                    );
+                                }
+                            },
+                        },
+                    ]
+                );
+            }
         } catch (error) {
-            console.error("Import failed:", error);
-            Alert.alert(
-                "Import Failed",
-                "Failed to import data. Please try again."
-            );
+            console.error("Import failed in handleImport:", error);
+            if (Platform.OS === "web") {
+                window.alert(
+                    error instanceof Error
+                        ? error.message
+                        : "Could not read the selected file"
+                );
+            } else {
+                Alert.alert(
+                    "Import Failed",
+                    error instanceof Error
+                        ? error.message
+                        : "Could not read the selected file"
+                );
+            }
         }
     };
 
