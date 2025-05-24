@@ -5,6 +5,9 @@ import {
     StyleSheet,
     ScrollView,
     ActivityIndicator,
+    TouchableOpacity,
+    Platform,
+    Alert,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types/navigation";
@@ -84,6 +87,55 @@ export default function DetailsScreen({ route, navigation }: Props) {
     const [entry, setEntry] = useState<MoodEntry | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const handleDelete = async () => {
+        // Confirm deletion
+        const shouldDelete =
+            Platform.OS === "web"
+                ? window.confirm(
+                      "Are you sure you want to delete this entry? This action cannot be undone."
+                  )
+                : await new Promise(resolve => {
+                      Alert.alert(
+                          "Delete Entry",
+                          "Are you sure you want to delete this entry? This action cannot be undone.",
+                          [
+                              {
+                                  text: "Cancel",
+                                  style: "cancel",
+                                  onPress: () => resolve(false),
+                              },
+                              {
+                                  text: "Delete",
+                                  style: "destructive",
+                                  onPress: () => resolve(true),
+                              },
+                          ]
+                      );
+                  });
+
+        if (shouldDelete) {
+            try {
+                await db.deleteEntry(entryId);
+                if (Platform.OS === "web") {
+                    window.alert("Entry deleted successfully");
+                } else {
+                    Alert.alert("Success", "Entry deleted successfully");
+                }
+                navigation.replace("ShowAllEntries");
+            } catch (error) {
+                console.error("Error deleting entry:", error);
+                if (Platform.OS === "web") {
+                    window.alert("Failed to delete entry. Please try again.");
+                } else {
+                    Alert.alert(
+                        "Error",
+                        "Failed to delete entry. Please try again."
+                    );
+                }
+            }
+        }
+    };
+
     useEffect(() => {
         const loadEntry = async () => {
             try {
@@ -150,6 +202,15 @@ export default function DetailsScreen({ route, navigation }: Props) {
                         No notes for this entry
                     </Text>
                 )}
+            </View>
+
+            <View style={styles.footer}>
+                <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={handleDelete}
+                >
+                    <Text style={styles.deleteButtonText}>Delete Entry</Text>
+                </TouchableOpacity>
             </View>
         </ScrollView>
     );
@@ -226,5 +287,23 @@ const styles = StyleSheet.create({
         color: "#ff4d4d",
         textAlign: "center",
         marginTop: 20,
+    },
+    footer: {
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: "#e0e0e0",
+    },
+    deleteButton: {
+        backgroundColor: "#fff",
+        padding: 16,
+        borderRadius: 12,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#ff4d4d",
+    },
+    deleteButtonText: {
+        color: "#ff4d4d",
+        fontSize: 16,
+        fontWeight: "600",
     },
 });

@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
 import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
+import { ISteadyDB } from "./ISteadyDBClass";
 
 interface MoodEntry {
     id: number;
@@ -222,6 +223,52 @@ class WebStorage {
             }
         });
     }
+
+    async deleteEntry(id: number): Promise<void> {
+        const db = this.db;
+        if (!db) throw new Error("Database not initialized");
+        return new Promise((resolve, reject) => {
+            try {
+                console.log("WebStorage: Starting delete entry...");
+                const transaction = db.transaction(
+                    ["mood_entries", "notes"],
+                    "readwrite"
+                );
+                const moodStore = transaction.objectStore("mood_entries");
+                const notesStore = transaction.objectStore("notes");
+
+                // Delete associated notes first
+                const notesRequest = notesStore.index("entry_id").getAll(id);
+                notesRequest.onsuccess = () => {
+                    const notes = notesRequest.result;
+                    notes.forEach(note => {
+                        notesStore.delete(note.id);
+                    });
+                };
+
+                // Delete the mood entry
+                const deleteRequest = moodStore.delete(id);
+                deleteRequest.onsuccess = () => {
+                    console.log("WebStorage: Entry deleted successfully");
+                };
+
+                transaction.oncomplete = () => {
+                    console.log("WebStorage: Delete transaction completed");
+                    resolve();
+                };
+                transaction.onerror = () => {
+                    console.error(
+                        "WebStorage: Delete transaction error:",
+                        transaction.error
+                    );
+                    reject(transaction.error);
+                };
+            } catch (error) {
+                console.error("WebStorage: Error in deleteEntry:", error);
+                reject(error);
+            }
+        });
+    }
 }
 
 export interface ExportedData {
@@ -234,7 +281,7 @@ export interface ExportedData {
     }[];
 }
 
-export class SteadyDB {
+export class SteadyDB implements ISteadyDB {
     private nativeDB: SQLite.WebSQLDatabase | null = null;
     private webDB: WebStorage | null = null;
     private dbName = "steady.db";
@@ -620,5 +667,59 @@ export class SteadyDB {
             console.error("Error during import:", error);
             throw error;
         }
+    }
+
+    async deleteEntry(id: number): Promise<void> {
+        console.log("SteadyDB: Starting deleteEntry...");
+        if (
+            Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.indexedDB
+        ) {
+            if (!this.webDB) throw new Error("Web database not initialized");
+            return this.webDB.deleteEntry(id);
+        }
+
+        if (!this.nativeDB) throw new Error("Native database not initialized");
+
+        return new Promise((resolve, reject) => {
+            try {
+                this.nativeDB!.transaction(tx => {
+                    // Delete associated notes first
+                    tx.executeSql(
+                        "DELETE FROM notes WHERE entry_id = ?",
+                        [id],
+                        (_, result) => {
+                            console.log("SteadyDB: Notes deleted");
+                            // Then delete the mood entry
+                            tx.executeSql(
+                                "DELETE FROM mood_entries WHERE id = ?",
+                                [id],
+                                (_, result) => {
+                                    console.log("SteadyDB: Entry deleted");
+                                    resolve();
+                                },
+                                (_, error) => {
+                                    console.error(
+                                        "Error deleting mood entry:",
+                                        error
+                                    );
+                                    reject(error);
+                                    return false;
+                                }
+                            );
+                        },
+                        (_, error) => {
+                            console.error("Error deleting notes:", error);
+                            reject(error);
+                            return false;
+                        }
+                    );
+                });
+            } catch (error) {
+                console.error("Error in deleteEntry transaction:", error);
+                reject(error);
+            }
+        });
     }
 }
