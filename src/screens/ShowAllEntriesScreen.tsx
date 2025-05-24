@@ -17,6 +17,9 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types/navigation";
 import type { ExportedData } from "../data/SteadyDBClass";
 import * as Clipboard from "expo-clipboard";
+import * as FileSystem from "expo-file-system";
+import * as DocumentPicker from "expo-document-picker";
+import * as Sharing from "expo-sharing";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ShowAllEntries">;
 
@@ -127,83 +130,133 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
         try {
             const exportData = await db.exportData();
             const jsonString = JSON.stringify(exportData, null, 2);
-            await Clipboard.setStringAsync(jsonString);
-            Alert.alert(
-                "Success",
-                "Data has been copied to your clipboard. Save it somewhere safe!"
-            );
+
+            if (Platform.OS === "web") {
+                // For web, create a download link using data URL
+                const dataStr =
+                    "data:text/json;charset=utf-8," +
+                    encodeURIComponent(jsonString);
+                const a = document.createElement("a");
+                a.href = dataStr;
+                a.download = `steady-export-${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // No need for alert on web as the download will start automatically
+            } else {
+                // For mobile, create a temporary file and share it
+                const fileUri = `${
+                    FileSystem.documentDirectory
+                }steady-export-${Date.now()}.json`;
+                await FileSystem.writeAsStringAsync(fileUri, jsonString, {
+                    encoding: FileSystem.EncodingType.UTF8,
+                });
+
+                // For mobile, use sharing
+                await Sharing.shareAsync(fileUri, {
+                    mimeType: "application/json",
+                    dialogTitle: "Export Steady Data",
+                    UTI: "public.json",
+                });
+
+                // Clean up the temporary file
+                await FileSystem.deleteAsync(fileUri, { idempotent: true });
+
+                Alert.alert("Success", "Data has been exported successfully!");
+            }
         } catch (error) {
             console.error("Export failed:", error);
             Alert.alert(
                 "Export Failed",
-                "Could not copy data to clipboard. Please try again."
+                "Could not export data. Please try again."
             );
         }
     };
 
     const handleImport = async () => {
         try {
-            const clipboardText = await Clipboard.getStringAsync();
-            if (!clipboardText) {
+            let jsonData: ExportedData;
+
+            if (Platform.OS === "web") {
+                // For web, use file input
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = "application/json";
+
+                const file = await new Promise<File>((resolve, reject) => {
+                    input.onchange = e => {
+                        const files = (e.target as HTMLInputElement).files;
+                        if (files && files[0]) {
+                            resolve(files[0]);
+                        } else {
+                            reject(new Error("No file selected"));
+                        }
+                    };
+                    input.click();
+                });
+
+                const text = await file.text();
+                jsonData = JSON.parse(text);
+            } else {
+                // For mobile, use document picker
+                const result = await DocumentPicker.getDocumentAsync({
+                    type: "application/json",
+                });
+
+                if (result.type === "cancel") {
+                    return;
+                }
+
+                const fileContent = await FileSystem.readAsStringAsync(
+                    result.uri
+                );
+                jsonData = JSON.parse(fileContent);
+            }
+
+            // Validate the data format
+            if (
+                !jsonData.version ||
+                !jsonData.entries ||
+                !Array.isArray(jsonData.entries)
+            ) {
                 Alert.alert(
-                    "No Data",
-                    "No data found in clipboard. Please copy your backup data first."
+                    "Invalid Format",
+                    "The selected file is not in the correct format. Please make sure you're using a valid Steady export file."
                 );
                 return;
             }
 
-            try {
-                const jsonData = JSON.parse(clipboardText);
-
-                // Validate the data format
-                if (
-                    !jsonData.version ||
-                    !jsonData.entries ||
-                    !Array.isArray(jsonData.entries)
-                ) {
-                    Alert.alert(
-                        "Invalid Format",
-                        "The clipboard data is not in the correct format. Please make sure you copied the entire backup data."
-                    );
-                    return;
-                }
-
-                // Confirm import
-                Alert.alert(
-                    "Confirm Import",
-                    `This will import ${jsonData.entries.length} entries and replace your current data. Continue?`,
-                    [
-                        {
-                            text: "Cancel",
-                            style: "cancel",
-                        },
-                        {
-                            text: "Import",
-                            onPress: async () => {
-                                try {
-                                    await importData(jsonData);
-                                } catch (error) {
-                                    console.error("Import failed:", error);
-                                    Alert.alert(
-                                        "Import Failed",
-                                        "Could not import the data. Please check the format and try again."
-                                    );
-                                }
-                            },
-                        },
-                    ]
-                );
-            } catch (error) {
-                Alert.alert(
-                    "Invalid Data",
-                    "The clipboard contains invalid JSON data. Please make sure you copied the entire backup data."
-                );
-            }
-        } catch (error) {
-            console.error("Clipboard read failed:", error);
+            // Confirm import
             Alert.alert(
-                "Error",
-                "Could not read from clipboard. Please try again."
+                "Confirm Import",
+                `This will import ${jsonData.entries.length} entries and replace your current data. Continue?`,
+                [
+                    {
+                        text: "Cancel",
+                        style: "cancel",
+                    },
+                    {
+                        text: "Import",
+                        onPress: async () => {
+                            try {
+                                await importData(jsonData);
+                            } catch (error) {
+                                console.error("Import failed:", error);
+                                Alert.alert(
+                                    "Import Failed",
+                                    "Could not import the data. Please check the format and try again."
+                                );
+                            }
+                        },
+                    },
+                ]
+            );
+        } catch (error) {
+            console.error("Import failed:", error);
+            Alert.alert(
+                "Import Failed",
+                "Could not read the selected file. Please make sure it's a valid Steady export file."
             );
         }
     };
@@ -294,15 +347,13 @@ export default function ShowAllEntriesScreen({ navigation }: Props) {
                         style={[styles.button, styles.exportButton]}
                         onPress={handleExport}
                     >
-                        <Text style={styles.buttonText}>Copy to Clipboard</Text>
+                        <Text style={styles.buttonText}>Export Data</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.button, styles.importButton]}
                         onPress={handleImport}
                     >
-                        <Text style={styles.buttonText}>
-                            Import from Clipboard
-                        </Text>
+                        <Text style={styles.buttonText}>Import Data</Text>
                     </TouchableOpacity>
                 </View>
                 <TouchableOpacity
