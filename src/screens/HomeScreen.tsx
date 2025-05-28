@@ -168,12 +168,28 @@ export default function HomeScreen({ navigation }: Props) {
     useEffect(() => {
         navigation.setOptions({
             headerRight: () => (
-                <TouchableOpacity
-                    onPress={() => navigation.navigate("Settings")}
-                    style={{ marginRight: 16 }}
-                >
-                    <Ionicons name="settings-outline" size={24} color="#333" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate("Info")}
+                        style={{ marginRight: 16 }}
+                    >
+                        <Ionicons
+                            name="information-circle-outline"
+                            size={24}
+                            color="#333"
+                        />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate("Settings")}
+                        style={{ marginRight: 16 }}
+                    >
+                        <Ionicons
+                            name="settings-outline"
+                            size={24}
+                            color="#333"
+                        />
+                    </TouchableOpacity>
+                </View>
             ),
         });
     }, [navigation]);
